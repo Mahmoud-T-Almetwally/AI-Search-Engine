@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+from typing import Dict
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -51,7 +52,7 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'ai_search_engine_project.urls'
 
-TEMPLATES = [
+TEMPLATES: list[Dict[str, str | list[str] | bool | Dict[str , list[str]]]] = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
         'DIRS': [],
@@ -72,7 +73,7 @@ WSGI_APPLICATION = 'ai_search_engine_project.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
+DATABASES: Dict[str, Dict[str, str | Path]] = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
@@ -109,6 +110,25 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 
 USE_TZ = True
+
+TEXT_MODEL_CONFIG: Dict[str, str | int] = {
+    "NAME": "sentence-transformers/all-MiniLM-L6-v2",
+    "BATCH_SIZE": 8,
+}
+
+IMAGE_MODEL_CONFIG: Dict[str, str | tuple[int, int, int] | int] = {
+    "NAME": "openai/clip-vit-base-patch32",
+    "BATCH_SIZE": 8,
+}
+
+AUDIO_MODEL_CONFIG: Dict[str, str | int] = {
+    "NAME": "laion/clap-htsat-unfused",
+    "INPUT_LEN": "20s",
+    "SAMPLING_RATE": 48000,
+    "BATCH_SIZE": 8,
+}
+
+MODELS_SAVE_DIR = "./models"
 
 
 # Static files (CSS, JavaScript, Images)
