@@ -6,3 +6,5 @@ test.py
 db.sqlite3
 __pycache__
 __pycache__/*
+model_cache
+model_cache/*

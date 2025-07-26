@@ -12,10 +12,14 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 from typing import Dict
+import environ
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+env = environ.Env()
+
+environ.Env.read_env(BASE_DIR / ".env")
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -116,17 +120,20 @@ USE_TZ = True
 
 TEXT_MODEL_CONFIG: Dict[str, str | int] = {
     "NAME": "sentence-transformers/all-MiniLM-L6-v2",
+    "DIMENSIONS":384,
     "BATCH_SIZE": 8,
 }
 
 IMAGE_MODEL_CONFIG: Dict[str, str | tuple[int, int, int] | int] = {
     "NAME": "openai/clip-vit-base-patch32",
+    "DIMENSIONS":512,
     "BATCH_SIZE": 8,
 }
 
 AUDIO_MODEL_CONFIG: Dict[str, str | int] = {
     "NAME": "laion/clap-htsat-unfused",
-    "INPUT_LEN": "20s",
+    "DIMENSIONS":512,
+    "INPUT_LEN_SECONDS": 20, 
     "SAMPLING_RATE": 48000,
     "BATCH_SIZE": 8,
 }
