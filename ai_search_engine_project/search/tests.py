@@ -1,9 +1,15 @@
 import numpy as np
+from PIL import Image
+import tempfile
+import requests
+
 from django.test import TestCase
 from django.db.utils import IntegrityError
 from django.conf import settings
 
 from .models import TextFeatures, ImageFeatures, AudioFeatures
+from .ai_models import TextFeatureExtractor, ImageFeatureExtractor, AudioFeatureExtractor, text_extractor, image_extractor, audio_extractor
+from .utils import chunk_audio
 
 class TextFeaturesModelTest(TestCase):
     """
@@ -159,6 +165,7 @@ class ImageFeaturesModelTest(TestCase):
                 embedding=invalid_vector
             )
 
+
 class AudioFeaturesModelTest(TestCase):
     """
         Test Suite for the AudioFeatures model.
@@ -259,4 +266,111 @@ class AudioFeaturesModelTest(TestCase):
                 end_stamp_seconds=end_stamp,
                 embedding=invalid_vector
             )
+
+
+class TextFeatureExtractorTest(TestCase):
+    
+    def test_singleton(self):
+        self.assertIs(text_extractor, TextFeatureExtractor())
+
+    def test_get_and_store_output(self):
+        
+        example = "This is an Example Text Input"
+
+        output = text_extractor.extract_features([example])
+
+        TextFeatures.objects.create(
+            id=1,
+            source_page_url="http://example.com/page1",
+            asset_url="http://example.com/page1#snippet1",
+            content=example,
+            embedding=output[0],
+        )
+
+        self.assertEqual(TextFeatures.objects.count(), 1)
+
+        retrieved_features = TextFeatures.objects.first()
+
+        self.assertEqual(retrieved_features.content, example)
+        np.testing.assert_allclose(retrieved_features.embedding, output[0], rtol=1e-6)
+
+
+class ImageFeatureExtractorTest(TestCase):
+    
+    def test_singleton(self):
+        self.assertIs(image_extractor, ImageFeatureExtractor())
+
+    def test_get_and_store_output(self):
+        
+        alt_text = "Two Cats Laying down"
+        url = "http://images.cocodataset.org/val2017/000000039769.jpg"
+        image = Image.open(requests.get(url, stream=True).raw)
+
+        output = image_extractor.extract_from_images([image])
+
+        ImageFeatures.objects.create(
+            id=1,
+            source_page_url="http://images.cocodataset.org/val2017",
+            asset_url="http://images.cocodataset.org/val2017/000000039769.jpg",
+            alt_text=alt_text,
+            embedding=output[0],
+        )
+
+        self.assertEqual(ImageFeatures.objects.count(), 1)
+
+        retrieved_features = ImageFeatures.objects.first()
+
+        self.assertEqual(retrieved_features.alt_text, alt_text)
+        np.testing.assert_allclose(retrieved_features.embedding, output[0], rtol=1e-6)
+
+
+class AudioFeatureExtractorTest(TestCase):
+    
+    def test_singleton(self):
+        self.assertIs(audio_extractor, AudioFeatureExtractor())
+
+    def test_get_and_store_output(self):
+
+        url = "https://getsamplefiles.com/download/wav/sample-5.wav"
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmp_file:
+            response = requests.get(url)
+            self.assertEqual(response.status_code, 200)
+            tmp_file.write(response.content)
+            tmp_file.flush()
+
+            sampling_rate = settings.AUDIO_MODEL_CONFIG.get("SAMPLING_RATE", 48000)
+
+            chuck_duration_s = settings.AUDIO_MODEL_CONFIG.get("INPUT_LEN_SECONDS", 20)
+
+            dimensions = settings.AUDIO_MODEL_CONFIG.get("DIMENSIONS", 512)
+
+            chunk_count = 0
+
+            for audio_chunk, start_s, end_s in chunk_audio(tmp_file.name, chuck_duration_s, sampling_rate):
+
+                output = audio_extractor.extract_from_audios([audio_chunk])
+
+                AudioFeatures.objects.create(
+                    id=chunk_count+1,
+                    begin_stamp_seconds=start_s,
+                    end_stamp_seconds=end_s,
+                    source_page_url="http://example.com/audio-page",
+                    asset_url=url,
+                    embedding=output[0]
+                )
+
+                chunk_count += 1
+
+        self.assertEqual(AudioFeatures.objects.count(), chunk_count)
+
+        first_chunk = AudioFeatures.objects.order_by("begin_stamp_seconds").first()
+        self.assertIsNotNone(first_chunk)
+        self.assertEqual(first_chunk.begin_stamp_seconds, 0)
+        self.assertEqual(first_chunk.end_stamp_seconds, first_chunk.begin_stamp_seconds + chuck_duration_s)
+
+        last_chunk = AudioFeatures.objects.order_by("begin_stamp_seconds").last()
+
+        np.testing.assert_allclose(last_chunk.embedding, output[0], rtol=1e-6)
+
 
