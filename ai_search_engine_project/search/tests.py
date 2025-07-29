@@ -1,13 +1,22 @@
 import numpy as np
 from PIL import Image
+from scipy.io import wavfile
 import tempfile
 import requests
+import io
+from unittest.mock import patch
+
+from rest_framework.test import APITestCase
+from rest_framework import status
 
 from django.test import TestCase
 from django.db.utils import IntegrityError
+from django.urls import reverse
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.conf import settings
 
 from .models import TextFeatures, ImageFeatures, AudioFeatures
+from .serializers import FileSearchQuerySerializer
 from .ai_models import TextFeatureExtractor, ImageFeatureExtractor, AudioFeatureExtractor, text_extractor, image_extractor, audio_extractor
 from .utils import chunk_audio
 
@@ -372,5 +381,174 @@ class AudioFeatureExtractorTest(TestCase):
         last_chunk = AudioFeatures.objects.order_by("begin_stamp_seconds").last()
 
         np.testing.assert_allclose(last_chunk.embedding, output[0], rtol=1e-6)
+
+
+class AISearchViewTest(APITestCase):
+    
+    def setUp(self):
+
+        self.url = reverse("multi_modal_search")
+
+        image_vector_dimensions = settings.IMAGE_MODEL_CONFIG.get("DIMENSIONS", 512)
+
+        audio_vector_dimensions = settings.AUDIO_MODEL_CONFIG.get("DIMENSIONS", 512)
+
+        self.image_vector = np.random.rand(image_vector_dimensions).tolist()
+        self.audio_vector = np.random.rand(audio_vector_dimensions).tolist()
+
+        self.image_to_find = ImageFeatures.objects.create(
+            id=1,
+            source_page_url="http://example.com/page1",
+            asset_url="http://example.com/image_to_find.jpg",
+            alt_text="Cat in a box",
+            embedding=self.image_vector
+        )
+
+        self.audio_to_find = AudioFeatures.objects.create(
+            id=1,
+            source_page_url="http://example.com/page1",
+            asset_url="http://example.com/audio_to_find.wav",
+            begin_stamp_seconds=0,
+            end_stamp_seconds=20,
+            embedding=self.audio_vector
+        )
+
+    def create_fake_image(self):
+        image_buffer = io.BytesIO()
+
+        img = Image.new("RGB", (256, 256), "white")
+
+        img.save(image_buffer, "PNG")
+
+        image_content = image_buffer.getvalue()
+        
+        return SimpleUploadedFile(
+            name="image.png",
+            content=image_content,
+            content_type="image/png"
+        )
+
+    def create_fake_audio(self):
+
+        audio_buffer = io.BytesIO()
+
+        sample_rate = settings.AUDIO_MODEL_CONFIG.get("SAMPLE_RATE", 48000)
+
+        wav = np.sin(np.linspace(0., 1., sample_rate * 20))
+
+        wavfile.write(audio_buffer, rate=sample_rate, data=wav)
+
+        audio_content = audio_buffer.getvalue()
+
+        return SimpleUploadedFile(
+            name="audio.wav",
+            content=audio_content,
+            content_type="audio/wav"
+        )
+        
+    def create_corrupted_image(self):
+        invalid_image_buffer = io.BytesIO(b"this is an invalid image")
+        invalid_image_buffer.seek(0)
+        return invalid_image_buffer
+
+    def create_invalid_file_format(self):
+        return SimpleUploadedFile("text.txt", b"this is an invalid file")
+    
+    @patch("search.ai_models.image_extractor.extract_from_images")
+    def test_image_to_image_search_sucess(self, mock_extract_from_images):
+        
+        mock_extract_from_images.return_value = [self.image_vector]
+
+        fake_image_file = self.create_fake_image()
+        
+        data = {
+            "file":fake_image_file,
+            "type":"image"
+        }
+
+        response = self.client.post(self.url, data, format="multipart")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        mock_extract_from_images.assert_called_once()
+
+        self.assertEqual(len(response.data), 1)
+        
+        self.assertEqual(response.data[0]['asset_url'], self.image_to_find.asset_url)
+
+    @patch("search.ai_models.audio_extractor.extract_from_audios")
+    def test_audio_to_audio_search_sucess(self, mock_extract_from_audios):
+        
+        mock_extract_from_audios.return_value = [self.audio_vector]
+
+        fake_audio_file = self.create_fake_audio()
+
+        data = {
+            "file":fake_audio_file,
+            "type":"audio"
+        }
+
+        response = self.client.post(self.url, data=data, format="multipart")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        mock_extract_from_audios.assert_called_once()
+
+        self.assertEqual(len(response.data), 1)
+        
+        self.assertEqual(response.data[0]['asset_url'], self.audio_to_find.asset_url)
+
+    def test_search_with_corrupted_image(self):
+        
+        corrupted_image = self.create_corrupted_image()
+
+        data = {
+            "file": corrupted_image,
+            "type": "image",
+        }
+
+        response = self.client.post(self.url, data=data, format="multipart")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        # self.assertIn("Invalid or Corrupted Image file", response.data['error'])
+
+    def test_search_with_invalid_file_extension(self):
+        
+        invalid_file = self.create_invalid_file_format()
+
+        data = {
+            "file": invalid_file,
+            "type": "audio"
+        }
+
+        response = self.client.post(self.url, data=data, format="multipart")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        # self.assertIsNotNone(response.data['error'])
+
+    def test_search_missing_file_parameter(self):
+        data = {
+            "type": "audio"
+        }
+
+        response = self.client.post(self.url, data=data, format="multipart")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        # self.assertIsNotNone(response.data['error'])
+
+    @patch("django.core.files.uploadedfile.SimpleUploadedFile")
+    def test_search_with_file_too_large(self, mock_file):
+        
+        mock_file.size = 1024*1024*30
+
+        data = {
+            "file":mock_file,
+            "type":"image"
+        }
+
+        serializer = FileSearchQuerySerializer(data=data)
+
+        self.assertFalse(serializer.is_valid())
+
 
 

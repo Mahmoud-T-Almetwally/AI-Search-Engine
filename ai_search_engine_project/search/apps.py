@@ -11,13 +11,15 @@ class SearchConfig(AppConfig):
 
         from . import ai_models
 
-        logger.info(msg="Search Config: Initializing AI models...")
+        logger.info(msg="Initializing AI models...")
 
         try:
 
             ai_models.text_extractor._ensure_model_loaded()
             ai_models.image_extractor._ensure_model_loaded()
             ai_models.audio_extractor._ensure_model_loaded()
+
+            logger.info("All AI models have been successfully pre-loaded.")
 
         except ai_models.ModelLoadingError as e:
 

@@ -23,7 +23,7 @@ class MultiModalSearchView(APIView):
         - Use POST with a 'file' and 'type' for file-to-X searches.
     """
 
-    async def get(self, request, *args, **kwargs):
+    def get(self, request, *args, **kwargs):
         """Handles all text-to-X searches."""
         
         serializer = TextSearchQuerySerializer(data=request.query_params)
@@ -63,7 +63,7 @@ class MultiModalSearchView(APIView):
         return Response(output_serializer.data, status=status.HTTP_200_OK)
         
 
-    async def post(self, request, *args, **kwargs):
+    def post(self, request, *args, **kwargs):
         """Handles all file-to-X searches (image-to-image, audio-to-audio)."""
         
         serializer = FileSearchQuerySerializer(data=request.data)

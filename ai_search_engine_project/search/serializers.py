@@ -1,4 +1,7 @@
 from rest_framework import serializers
+
+from django.core.validators import FileExtensionValidator
+
 from .models import TextFeatures, ImageFeatures, AudioFeatures
 
 
@@ -22,7 +25,9 @@ class FileSearchQuerySerializer(serializers.Serializer):
     """Validates the form data for file-based searches."""
 
     file = serializers.FileField(
-        required=True, help_text="The image or audio file to search with."
+        required=True,
+        help_text="The image or audio file to search with.",
+        validators=[FileExtensionValidator(allowed_extensions=['jpg', 'jpeg', 'png', 'wav', 'mp3'])]
     )
     type = serializers.ChoiceField(
         choices=["image", "audio"],
@@ -32,6 +37,12 @@ class FileSearchQuerySerializer(serializers.Serializer):
     limit = serializers.IntegerField(
         default=10, min_value=1, max_value=50, help_text="Number of results to return."
     )
+
+    def validate_file(self, value):
+        MAX_FILE_SIZE = 1024 * 1024 * 20
+        if value.size > MAX_FILE_SIZE:
+            raise serializers.ValidationError(f"File size cannot exceed {MAX_FILE_SIZE / 1024 / 1024} MB.")
+        return value
 
 
 class TextResultSerializer(serializers.ModelSerializer):
