@@ -1,6 +1,8 @@
 from django.db import models
 from pgvector.django import VectorField
 from django.conf import settings
+from django.contrib.postgres.search import SearchVectorField, SearchVector
+from django.contrib.postgres.indexes import GinIndex
 
 
 class BaseAsset(models.Model):
@@ -18,6 +20,12 @@ class ImageFeatures(BaseAsset):
     alt_text = models.CharField(max_length=512, blank=True)
     embedding = VectorField(dimensions=512)
 
+    search_vector = models.GeneratedField(
+        expression=SearchVector('alt_text', config='english'),
+        output_field=SearchVectorField(),
+        db_persist=True,
+    )
+
     def save(self, *args, **kwargs):
         expected_dims = settings.IMAGE_MODEL_CONFIG.get("DIMENSIONS", 512)
         if not (self.embedding is None) and len(self.embedding) != expected_dims:
@@ -30,14 +38,22 @@ class ImageFeatures(BaseAsset):
     def __str__(self):
         return f"Image from: {self.source_page_url}"
     
-    class Meta: # type: ignore
+    class Meta: 
         constraints = [
             models.UniqueConstraint(fields=['asset_url'], name='unique_image_asset_url')
         ]
+        indexes = [GinIndex(fields=["search_vector"])]
+
     
 class TextFeatures(BaseAsset):
     content = models.TextField()
     embedding = VectorField(dimensions=384)
+
+    search_vector = models.GeneratedField(
+        expression=SearchVector('content', config='english'),
+        output_field=SearchVectorField(),
+        db_persist=True,
+    )
 
     def save(self, *args, **kwargs):
         expected_dims = settings.TEXT_MODEL_CONFIG.get("DIMENSIONS", 384)
@@ -50,9 +66,13 @@ class TextFeatures(BaseAsset):
 
     def __str__(self):
         return f"Text Snippet from: {self.source_page_url}"
+    
+    class Meta: 
+        indexes = [GinIndex(fields=["search_vector"])]
 
 
 class AudioFeatures(BaseAsset):
+
     begin_stamp_seconds = models.PositiveIntegerField()
     end_stamp_seconds = models.PositiveIntegerField()
     
@@ -70,7 +90,7 @@ class AudioFeatures(BaseAsset):
     def __str__(self):
         return f"Audio Chunk ({self.begin_stamp_seconds}s-{self.end_stamp_seconds}s) from: {self.source_page_url}"
 
-    class Meta: # type: ignore
+    class Meta: 
         constraints = [
             models.UniqueConstraint(fields=['asset_url', 'begin_stamp_seconds'], name='unique_audio_chunk')
         ]

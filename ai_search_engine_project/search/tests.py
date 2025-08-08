@@ -352,8 +352,6 @@ class AudioFeatureExtractorTest(TestCase):
 
             chuck_duration_s = settings.AUDIO_MODEL_CONFIG.get("INPUT_LEN_SECONDS", 20)
 
-            dimensions = settings.AUDIO_MODEL_CONFIG.get("DIMENSIONS", 512)
-
             chunk_count = 0
 
             for audio_chunk, start_s, end_s in chunk_audio(tmp_file.name, chuck_duration_s, sampling_rate):
@@ -551,4 +549,59 @@ class AISearchViewTest(APITestCase):
         self.assertFalse(serializer.is_valid())
 
 
+class KeywordSearch(APITestCase):
+    
+    def setUp(self):
 
+        self.url = reverse("keyword_search")
+
+        image_vector_dimensions = settings.IMAGE_MODEL_CONFIG.get("DIMENSIONS", 512)
+        text_vector_dimensions = settings.TEXT_MODEL_CONFIG.get("DIMENSIONS", 384)
+
+        self.image_vector = np.random.rand(image_vector_dimensions).tolist()
+        self.text_vector = np.random.rand(text_vector_dimensions).tolist()
+
+        self.image_to_find = ImageFeatures.objects.create(
+            id=1,
+            source_page_url="http://example.com/page1",
+            asset_url="http://example.com/image_to_find.jpg",
+            alt_text="Cat in a box",
+            embedding=self.image_vector
+        )
+
+        self.text_to_find = TextFeatures.objects.create(
+            id=1,
+            source_page_url="http://example.com/page1",
+            asset_url="http://example.com/image_to_find.jpg",
+            content="lorem ipsum",
+            embedding=self.text_vector
+        )
+
+    def test_text_to_image_success(self):
+        
+        data = {
+            "q":"cat",
+            "type":"image",
+        }
+
+        response = self.client.get(self.url, data)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.assertEqual(len(response.data), 1)
+        
+        self.assertEqual(response.data[0]['asset_url'], self.image_to_find.asset_url)
+
+    def test_text_to_text_success(self):
+        data = {
+            "q":"lorem",
+            "type":"text",
+        }
+
+        response = self.client.get(self.url, data)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.assertEqual(len(response.data), 1)
+        
+        self.assertEqual(response.data[0]['content'], self.text_to_find.content)

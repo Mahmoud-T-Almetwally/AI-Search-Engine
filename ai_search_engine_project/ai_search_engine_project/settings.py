@@ -147,6 +147,12 @@ AUDIO_MODEL_CONFIG: Dict[str, str | int] = {
     "BATCH_SIZE": 8,
 }
 
+STT_MODEL_CONFIG = {
+    "NAME": "openai/whisper-large-v3",
+    "SAMPLING_RATE": 48000,
+    "TASK":"transcribe"
+}
+
 MODELS_SAVE_DIR = "./models"
 
 

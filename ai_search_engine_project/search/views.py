@@ -2,6 +2,7 @@ from rest_framework.decorators import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.conf import settings
+from django.contrib.postgres.search import SearchQuery
 
 from pgvector.django import L2Distance
 
@@ -119,4 +120,39 @@ class MultiModalSearchView(APIView):
         return Response(output_serialzer.data, status=status.HTTP_200_OK)
         
 
+
+class KeyWordSearchView(APIView):
+    
+    """
+        Provides a fast, non-AI keyword search against text content
+        using PostgreSQL's full-text search capabilities.
+    """
+    
+    def get(self, request, *args, **kwargs):
         
+        serializer = TextSearchQuerySerializer(data=request.query_params)
+        if not serializer.is_valid():
+            return Response(data=serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        validated_data = serializer.validated_data
+
+        text_query = validated_data['q']
+        search_type = validated_data['type']
+        limit = validated_data['limit']
+
+        search_query = SearchQuery(text_query)
+
+        if search_type == "image":
+            results = ImageFeatures.objects.filter(search_vector=search_query)[:limit]
+
+            output_serializer = ImageResultSerializer(results, many=True)
+            
+        elif search_type == "text":
+            results = TextFeatures.objects.filter(search_vector=search_query)[:limit]
+
+            output_serializer = TextResultSerializer(results, many=True)
+
+        else:
+            return Response({"error":"Invalid Search Type for file upload"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response(data=output_serializer.data, status=status.HTTP_200_OK)
