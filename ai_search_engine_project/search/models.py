@@ -6,7 +6,6 @@ from django.contrib.postgres.indexes import GinIndex
 
 
 class BaseAsset(models.Model):
-    id = models.BigIntegerField(primary_key=True, auto_created=True)
     asset_url = models.URLField(max_length=1024, blank=True, null=True, db_index=True)
     source_page_url = models.URLField(max_length=1024, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
