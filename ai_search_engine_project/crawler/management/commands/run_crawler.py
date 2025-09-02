@@ -5,9 +5,12 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 from django.core.management.base import BaseCommand
+from django.core.management import call_command
+
+from indexer.tasks import index_media_asset, index_text_snippet
 
 
-def process_page_content(page_url, texts, image_urls, audio_urls):
+def print_page_content(page_url, texts: list[str], image_urls: list[str], audio_urls: list[str]):
     """
     This function will eventually trigger the real indexing process.
     For now, it just prints what it found.
@@ -73,12 +76,23 @@ class Command(BaseCommand):
             image_urls = self.extract_media_urls(soup, current_url, tag='img', extensions=['.jpg', '.jpeg', '.png'])
             audio_urls = self.extract_media_urls(soup, current_url, tag='audio', extensions=['.wav', '.mp3'])
             
-            process_page_content(
+            print_page_content(
                 page_url=current_url,
                 texts=texts,
                 image_urls=image_urls,
                 audio_urls=audio_urls
             )
+
+            for text in texts:
+                index_text_snippet.delay(text, current_url)
+            
+            for image_info in image_urls:
+                index_media_asset.delay(image_info, current_url, 'image')
+            
+            for audio_info in audio_urls:
+                index_media_asset.delay(audio_info, current_url, 'audio')
+            
+            self.stdout.write(f"Dispatched {len(texts)} text tasks and {len(image_urls) + len(audio_urls)} media tasks to the queue.")
 
             new_links = self.extract_links(soup, current_url)
             for link in new_links:

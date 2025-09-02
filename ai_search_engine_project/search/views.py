@@ -120,7 +120,6 @@ class MultiModalSearchView(APIView):
         return Response(output_serialzer.data, status=status.HTTP_200_OK)
         
 
-
 class KeyWordSearchView(APIView):
     
     """
