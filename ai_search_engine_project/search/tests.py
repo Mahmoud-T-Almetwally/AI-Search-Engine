@@ -4,7 +4,8 @@ from scipy.io import wavfile
 import tempfile
 import requests
 import io
-from unittest.mock import patch
+from io import StringIO
+from unittest.mock import patch, Mock
 
 from rest_framework.test import APITestCase
 from rest_framework import status
@@ -13,6 +14,7 @@ from django.test import TestCase
 from django.db.utils import IntegrityError
 from django.urls import reverse
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
 from django.conf import settings
 
 from .models import TextFeatures, ImageFeatures, AudioFeatures
@@ -605,3 +607,98 @@ class KeywordSearch(APITestCase):
         self.assertEqual(len(response.data), 1)
         
         self.assertEqual(response.data[0]['content'], self.text_to_find.content)
+
+
+class SystemEndToEndTest(APITestCase):
+    """
+    A full system-level test for the entire search engine pipeline.
+    1. Mocks the external world (internet, AI models).
+    2. Runs the crawler to populate the database via Celery tasks.
+    3. Queries the API endpoints to verify the results.
+    """
+
+    def setUp(self):
+        """Set up our fake world: a mini-internet and predictable AI outputs."""
+        self.fake_text_vector = [0.1] * 384
+        self.fake_image_vector = [0.2] * 512
+        self.fake_audio_vector = [0.3] * 512
+
+        image_buffer = io.BytesIO()
+        Image.new('RGB', (1, 1)).save(image_buffer, format='PNG')
+        self.fake_image_bytes = image_buffer.getvalue()
+
+        self.fake_site_content = {
+            "http://my-fake-site.com/page1": """
+                <html><body>
+                    <h1>Welcome Page</h1>
+                    <p>Some interesting text.</p>
+                    <a href="/page2">Link to Page 2</a>
+                    <img src="/assets/photo.png" alt="A photo of a welcome mat">
+                </body></html>
+            """,
+            "http://my-fake-site.com/page2": """
+                <html><body>
+                    <p>This is the second page.</p>
+                </body></html>
+            """,
+            "http://my-fake-site.com/assets/photo.png": self.fake_image_bytes,
+        }
+
+    def mock_requests_get(self, url, timeout=None, stream=False):
+        """A mock for requests.get that serves our fake site content."""
+        mock_response = Mock()
+        if url in self.fake_site_content:
+            content = self.fake_site_content[url]
+            mock_response.status_code = 200
+            mock_response.raise_for_status.return_value = None
+            if isinstance(content, str):
+                mock_response.text = content
+                mock_response.content = content.encode('utf-8')
+            else:
+                mock_response.content = content
+            return mock_response
+        else:
+            mock_response.status_code = 404
+            mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("404 Not Found")
+            return mock_response
+        
+    @patch('requests.get')
+    @patch('search.ai_models.audio_extractor.extract_from_audios')
+    @patch('search.ai_models.image_extractor.extract_from_images')
+    @patch('search.ai_models.text_extractor.extract_features')
+    def test_full_system_flow(self, mock_extract_text, mock_extract_images,
+                              mock_extract_audio, mock_requests):
+        """
+        Tests the entire pipeline from crawling to API query.
+        """
+
+        mock_requests.side_effect = self.mock_requests_get
+        mock_extract_text.return_value = [self.fake_text_vector]
+        mock_extract_images.return_value = [self.fake_image_vector]
+        mock_extract_audio.return_value = [self.fake_audio_vector]
+
+        call_command('run_crawler', 'http://my-fake-site.com/page1', '--limit=5', '--delay=0')
+        
+        self.assertEqual(TextFeatures.objects.count(), 4) # h1, p on page1; p on page2
+        self.assertEqual(ImageFeatures.objects.count(), 1)
+        self.assertEqual(AudioFeatures.objects.count(), 0) # No audio on our fake site
+        
+        # --- Keyword Search ---
+        keyword_url = reverse('keyword_search') + "?q=welcome&type=text"
+        response_keyword = self.client.get(keyword_url)
+        
+        # --- AI Search (Text-to-Text) ---
+        ai_url = reverse('multi_modal_search') + "?q=A+nice+greeting&type=text"
+        response_ai = self.client.get(ai_url)
+
+        
+        # --- Verify Keyword Search Results ---
+        self.assertEqual(response_keyword.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response_keyword.data), 1)
+        self.assertEqual(response_keyword.data[0]['content'], 'Welcome Page')
+
+        
+        # --- Verify AI Search Results ---
+        self.assertEqual(response_ai.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response_ai.data), 4)
+        self.assertEqual(response_ai.data[0]['content'], 'Welcome Page')
