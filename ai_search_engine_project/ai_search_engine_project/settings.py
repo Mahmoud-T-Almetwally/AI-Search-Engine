@@ -13,13 +13,14 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 from pathlib import Path
 from typing import Dict
 import environ
-import os
 import sys
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-env = environ.Env()
+env = environ.Env(
+    DEBUG=(bool, False)
+)
 
 environ.Env.read_env(BASE_DIR / ".env")
 
@@ -27,12 +28,12 @@ environ.Env.read_env(BASE_DIR / ".env")
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-2wzmy&(#bu^dt(lqmamkl@3=^8e#b0lv$9us*^q-^oqz&y#5sc'
+SECRET_KEY = env('SECERT_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env('DEBUG')
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost'])
 
 
 # Application definition
@@ -84,17 +85,13 @@ WSGI_APPLICATION = 'ai_search_engine_project.wsgi.application'
 
 DATABASES: Dict[str, Dict[str, str | Path | Dict[str, str]]] = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql_psycopg2',
-        'NAME': os.environ['DB_NAME'],
-        'USER': os.environ['DB_USER'],
-        'PASSWORD': os.environ['DB_PASS'],
-        'HOST': os.environ['DB_HOST'],
-        'PORT': os.environ['DB_PORT'],
-        "TEST":{
-            # 'NAME':os.environ['TEST_DB_NAME'],
-            'TEMPLATE':os.environ['TEST_DB_TEMPLATE'],
+            **env.db(),
+            "PASSWORD": env("DB_PASSWORD"), # For an issue i do not know the cause of, the env.db() returns the 'PASSWORD' field as an empty string but env("DB_PASSWORD") does not
         }
-    }
+}
+
+DATABASES['default']['TEST'] = {
+    'NAME': env('TEST_DB_NAME', default=f"{env('DB_NAME')}_test"),
 }
 
 
@@ -159,9 +156,9 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_BROKER_URL = env('CELERY_BROKER_URL')
 
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND')
 
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'

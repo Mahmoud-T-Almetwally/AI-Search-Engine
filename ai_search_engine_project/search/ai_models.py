@@ -85,7 +85,7 @@ class TextFeatureExtractor(BaseFeatureExtractor):
     def extract_features(self, texts: List[str]):
         self._ensure_model_loaded()
         return self.model.encode(
-            texts, batch_size=settings.TEXT_MODEL_CONFIG("BATCH_SIZE", 8)
+            texts, batch_size=settings.TEXT_MODEL_CONFIG.get("BATCH_SIZE", 8)
         ).tolist()
 
 
@@ -93,7 +93,7 @@ class ImageFeatureExtractor(BaseFeatureExtractor):
 
     def _load_model(self):
         if self.model is None:
-            model_name = settings.IMAGE_MODEL_CONFIG("NAME", "openai/clip-vit-base-patch32")
+            model_name = settings.IMAGE_MODEL_CONFIG.get("NAME", "openai/clip-vit-base-patch32")
             logger.info(msg=f"Loading Image Model: {model_name}")
             self.model = CLIPModel.from_pretrained(model_name).to(DEVICE)
             self.processor = CLIPImageProcessorFast.from_pretrained(
@@ -123,7 +123,7 @@ class AudioFeatureExtractor(BaseFeatureExtractor):
 
     def _load_model(self):
         if self.model is None:
-            model_name = settings.AUDIO_MODEL_CONFIG("NAME", "laion/clap-htsat-unfused")
+            model_name = settings.AUDIO_MODEL_CONFIG.get("NAME", "laion/clap-htsat-unfused")
             logger.info(msg=f"Loading Audio Model: {model_name}")
             self.model = ClapModel.from_pretrained(model_name).to(DEVICE)
             self.processor = ClapProcessor.from_pretrained(model_name, use_fast=True)
@@ -134,7 +134,7 @@ class AudioFeatureExtractor(BaseFeatureExtractor):
             audios=audios,
             return_tensors="pt",
             padding=True,
-            sampling_rate=settings.AUDIO_MODEL_CONFIG("SAMPLING_RATE", 48000),
+            sampling_rate=settings.AUDIO_MODEL_CONFIG.get("SAMPLING_RATE", 48000),
         ).to(DEVICE)
         with torch.no_grad():
             audio_embeddings = self.model.get_audio_features(**inputs)
