@@ -161,10 +161,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CELERY_BROKER_URL = 'redis://localhost:6379/0'
 
-# Optional: Store task results in Redis as well.
 CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
 
-# Other useful settings
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'

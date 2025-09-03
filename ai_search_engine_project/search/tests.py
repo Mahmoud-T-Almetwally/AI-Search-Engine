@@ -679,9 +679,9 @@ class SystemEndToEndTest(APITestCase):
 
         call_command('run_crawler', 'http://my-fake-site.com/page1', '--limit=5', '--delay=0')
         
-        self.assertEqual(TextFeatures.objects.count(), 4) # h1, p on page1; p on page2
+        self.assertEqual(TextFeatures.objects.count(), 4)
         self.assertEqual(ImageFeatures.objects.count(), 1)
-        self.assertEqual(AudioFeatures.objects.count(), 0) # No audio on our fake site
+        self.assertEqual(AudioFeatures.objects.count(), 0)
         
         # --- Keyword Search ---
         keyword_url = reverse('keyword_search') + "?q=welcome&type=text"
